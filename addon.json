@@ -1,24 +1,22 @@
 {
     "name": "tabellenrechner",
-    "version": "1.1.7",
+    "version": "1.1.3",
     "type": "standalone",
-    "standalone_entrypoints": [
-        "lmo-tabellenrechner.php"
-    ],
+    "standalone_entrypoints": ["lmo-tabellenrechner.php"],
     "description": {
         "de": "Tabellenrechner-Addon mit externem Template-System zur freien Konfiguration der Tabellendarstellung.",
         "en": "Table calculator add-on with external template system for freely configurable table display."
     },
     "author": "Dietmar Kersting, Torsten Hofmann",
     "license": "GPL-3.0-only",
-    "homepage": "https://github.com/lmonext-org/lmonext_addon-tabellenrechner",
+    "homepage": "https://github.com/henshingly/lmonext_addon-tabellenrechner",
     "icon": "🧮",
-    "min_core_version": "1.9.92",
+    "min_core_version": "1.9.0",
     "dependencies": [],
     "admin_handlers": [],
     "admin_views": {},
     "admin_nav": [],
-    "frontend_handlers": [],
+    "frontend_handlers": ["lmo-tabellenrechner.php"],
     "frontend_views": {},
     "templates_dir": "templates/",
     "lang_dir": "lang/",
