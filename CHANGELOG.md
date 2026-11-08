@@ -8,6 +8,56 @@ Die vollständige Entwicklungshistorie bis zur Extraktion steht im
 CHANGELOG.md des LMOnext-Kernprojekts unter den Abschnitten
 `addon/tabellenrechner/*`.
 
+## Version 1.1.7
+
+- Fix (Torsten-Live-Fund 19.10.: Union-BVB 0:0, Eingabe 0:1 ergab
+  "5 4 1 0 11:4 +7 13" statt 6 Spiele/16 Punkte): Ein EINSEITIGER Override
+  (nur Heim- oder nur Gast-Wert gesetzt, z.B. waehrend der Eingabe oder
+  bei leerem Feld) nullte die Partie komplett - eine bereits gespielte
+  Partie fiel damit aus der What-If-Tabelle (ihrem 0:0-Remis wurden
+  Spiel/Unentschieden/Punkte abgezogen, der neue Sieg zaehlte nie).
+  Jetzt: nur BEIDSEITIG gesetzte Overrides uebernehmen; einseitige werden
+  ignoriert, die Partie bleibt wie in der DB. Fuer kuenftige Partien
+  unveraendert (ohne vollstaendiges Ergebnis bleibt sie ungespielt).
+- Fix (Client): Der Override-Cleanup pruefte mit '!' - ein gueltiges 0:0
+  (beide Werte 0) galt als "nicht gesetzt" und wurde geloescht: Bei
+  kuenftigen Partien zaehlte ein eingetipptes 0:0 nie als Remis. Jetzt
+  explizite undefined-Pruefung.
+
+## Version 1.1.6
+
+- Fix (Torsten-Fund 18.10., demo: keine Team-Icons): Die Logo-Anzeige
+  las noch die entfernte LIGA-Option "ShowLogos" (Zombie-Einstellung,
+  seit dem Port bewusst aus dem Admin entfernt) - sie lieferte IMMER
+  '0', selbst wenn die globale Einstellung "Mannschaftslogos anzeigen?"
+  (Admin > Einstellungen > Anzeige, show_team_logos) auf Ja steht.
+  Jetzt wird wie im Kern ueber LigaService::showTeamLogos() die GLOBALE
+  Einstellung gelesen.
+
+## Version 1.1.5
+
+- Fix (Torsten-Live-Fund 18.10., demo.bastel-code.de: keine Team-Icons
+  in der eingebetteten Ansicht): Der Asset-Praefix zielte bei
+  verschachtelter Installation (LMOnext in /lmonext/app/public/,
+  einbettende Seite in der Web-Wurzel) auf den Projekt-Ordner bzw. blieb
+  ganz relativ - alle Logo-URLs gingen auf 404. Berechnung jetzt ueber
+  den geteilten Kern-Helfer lmonextAssetPrefixFor() (app/bootstrap.php):
+  Docroot-Erkennung zuerst, LMO_ADDON_WEB_BASE nur als Fallback.
+
+## Version 1.1.4
+
+- Port fuer den LMOnext-Hexagon (v1.9.92): Bootstrap-Pfad in
+  `lmo-tabellenrechner.php` auf `app/bootstrap.php` umgestellt, Aufruf
+  ausschliesslich ueber den zentralen Standalone-Controller
+  `addon-run.php` (addon=/file=-Parameter, kein Direktaufruf der Datei
+  mehr moeglich).
+- Neuberechnungs-AJAX (Was-waere-wenn) sendet das CSRF-Token als eigenes
+  Feld mit; requireCsrf() prueft jeden POST zentral (ohne Token 403,
+  mit Token Simulation).
+- Homepage zeigt auf das eigene Addon-Repo
+  (github.com/lmonext-org/lmonext_addon-tabellenrechner): jedes Addon
+  lebt in einem eigenen GitHub-Repo mit eigenen Tags/Releases.
+
 ## Aktuelle Version: 1.0.7
 
 - Als eigenständiges addon.json-Paket verpackt (Templates/Sprachdateien

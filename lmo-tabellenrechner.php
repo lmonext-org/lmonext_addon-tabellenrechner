@@ -58,7 +58,14 @@ use LMOnext\Liga\LigaService;
 // include()?
 $trIsDirectCall = defined('LMO_ADDON_STANDALONE_CALL');
 
-require_once __DIR__ . '/../../frontend/bootstrap.php';
+require_once __DIR__ . '/../../app/bootstrap.php';
+
+// PORT (hexagonale App-Schicht): die Frontend-Datenfunktionen (getLigaOptions,
+// LigaService samt Traits usw.) sind im Port NICHT PSR-4-autoloadbar, sondern
+// leben in app/Frontend/data_liga.php. app/bootstrap.php laedt sie bewusst
+// NICHT - im addon-run.php-Kontext sind sie bereits geladen, beim include()
+// von fremdem Code werden sie hier nachgeholt.
+require_once __DIR__ . '/../../app/Frontend/data_liga.php';
 
 // Standalone-Addon: eigene Sprachdateien explizit laden.
 if (function_exists('addonManager')) {
@@ -66,7 +73,7 @@ if (function_exists('addonManager')) {
 }
 
 // Dieses Addon ist bewusst zum Einbetten via iframe auf fremden Websites
-// gedacht (siehe Docblock oben) - die von frontend/bootstrap.php gesetzten
+// gedacht (siehe Docblock oben) - die von app/bootstrap.php gesetzten
 // Frame-Schutz-Header (X-Frame-Options/CSP frame-ancestors) werden hier
 // deshalb wieder entfernt, sonst würde jede Einbettung blockiert.
 if (!headers_sent()) {
@@ -92,26 +99,25 @@ function trProjectRootUrlPrefix() : string
         return $prefix;
     }
 
-    if (defined('LMO_ADDON_WEB_BASE')) {
-        $prefix = rtrim(dirname(rtrim(LMO_ADDON_WEB_BASE, '/'), 2), '/') . '/';
-        return $prefix;
+    // 1.1.2: Praefix = Web-Pfad von app/public (assets/) relativ zum
+    // Docroot - geteilter Kern-Helfer lmonextAssetPrefixFor()
+    // (app/bootstrap.php, dort Reihenfolge + Live-Fund dokumentiert):
+    // Docroot-Erkennung ZUERST, LMO_ADDON_WEB_BASE nur als Fallback
+    // (bei Wrapper-Includes ist die aus SCRIPT_NAME abgeleitete Web-Basis
+    // falsch - demo.bastel-code.de/ewige.php, 18.10.).
+    $appPublicDisk = dirname(__DIR__, 2) . '/app/public';
+    $realAppPublic = (string)@realpath($appPublicDisk);
+    if ($realAppPublic !== '') {
+        $appPublicDisk = $realAppPublic;
     }
-
-    $projectRootDisk = rtrim(str_replace('\\', '/', dirname(__DIR__, 2)), '/');
-    $scriptFilename  = str_replace('\\', '/', (string)($_SERVER['SCRIPT_FILENAME'] ?? ''));
-    $scriptName      = (string)($_SERVER['SCRIPT_NAME'] ?? '');
-
-    if ($scriptFilename !== '' && $scriptName !== '' && str_ends_with($scriptFilename, $scriptName)) {
-        $documentRootDisk = substr($scriptFilename, 0, -strlen($scriptName));
-        $documentRootDisk = rtrim($documentRootDisk, '/');
-        if ($documentRootDisk !== '' && str_starts_with($projectRootDisk, $documentRootDisk)) {
-            $prefix = substr($projectRootDisk, strlen($documentRootDisk)) . '/';
-            return $prefix;
-        }
-    }
-
-    $isDirectCall = defined('LMO_ADDON_STANDALONE_CALL');
-    $prefix = $isDirectCall ? '../../' : '';
+    $prefix = \lmonextAssetPrefixFor(
+        $appPublicDisk,
+        (string)($_SERVER['SCRIPT_FILENAME'] ?? ''),
+        (string)($_SERVER['SCRIPT_NAME'] ?? ''),
+        defined('LMO_ADDON_WEB_BASE'),
+        (string)(defined('LMO_ADDON_WEB_BASE') ? LMO_ADDON_WEB_BASE : ''),
+        defined('LMO_ADDON_STANDALONE_CALL'),
+    );
     return $prefix;
 }
 
@@ -357,7 +363,7 @@ function renderTabellenrechnerView(int $ligaId, array $allSpieltage, int $trNr, 
     $csrfJs     = json_encode(csrfToken(), JSON_UNESCAPED_SLASHES);
 
     $js = <<<HTML
-<script>
+<script<?= function_exists('cspNonceAttr') ? cspNonceAttr() : '' ?>>
 (function(){
   "use strict";
   var recalcUrl   = {$recalcJs};
@@ -384,7 +390,10 @@ function renderTabellenrechnerView(int $ligaId, array $allSpieltage, int $trNr, 
         if (!allOverrides[pid]) { allOverrides[pid] = {}; }
         allOverrides[pid][side] = parseInt(val, 10);
       }
-      if (allOverrides[pid] && !allOverrides[pid].h && !allOverrides[pid].g) {
+      // 1.9.117: explizite undefined-Pruefung statt '!' - sonst wurde
+      // ein gueltiges 0:0 (beide Werte 0, falsy) als Override geloescht
+      // und zaehlte bei kuenftigen Partien nie als Remis.
+      if (allOverrides[pid] && allOverrides[pid].h === undefined && allOverrides[pid].g === undefined) {
         delete allOverrides[pid];
       }
     });
@@ -399,7 +408,7 @@ function renderTabellenrechnerView(int $ligaId, array $allSpieltage, int $trNr, 
     // Bugfix (siehe ausführlicher Kommentar bei handleTabellenrechnerAjax()):
     // Content-Type auf "application/x-www-form-urlencoded" umgestellt (statt
     // "application/json") und das CSRF-Token als eigenes Feld mitgesendet -
-    // PHP füllt $_POST nur bei diesem Content-Type automatisch, und
+    // PHP füllt das POST-Array nur bei diesem Content-Type automatisch, und
     // requireCsrf() (zentral für jeden POST-Request geprüft) verlangt das
     // Token genau dort.
     fetch(recalcUrl, {
@@ -559,7 +568,11 @@ function renderTabellenrechnerTabelle(
     $totalTeams      = count($rows);
     $showMinuspunkte = ($opts['MinusPoints'] ?? '0') === '1';
     $footnoteNrs     = LigaService::assignStrafFootnotes($rows);
-    $showLogos       = ($opts['ShowLogos'] ?? '0') === '1';
+    // 1.1.6:
+    // Die LIGA-Option ShowLogos ist seit dem Port zum GLOBAL Admin-Setting
+    // geworden (show_team_logos, Liga-Checkbox bewusst entfernt) - die
+    // alte Abfrage war eine Zombie-Einstellung und lieferte IMMER '0'.
+    $showLogos       = LigaService::showTeamLogos();
     $trendByTeam     = LigaService::computePositionTrend($teams, $partien, $opts, $ligaId, 'overall');
 
     $rowsHtml = '';
@@ -633,7 +646,7 @@ function handleSpieltagAjax(int $ligaId, array $allSpieltage, string $trTemplate
  * Content-Type "application/json" gesendet (roher JSON-Body). PHP füllt
  * $_POST aber NUR bei "application/x-www-form-urlencoded" oder
  * "multipart/form-data" automatisch - bei einem JSON-Body bleibt $_POST
- * immer leer. requireCsrf() (zentral in frontend/bootstrap.php für JEDEN
+ * immer leer. requireCsrf() (zentral in app/bootstrap.php für JEDEN
  * POST-Request aufgerufen, noch bevor dieser Code hier überhaupt läuft)
  * prüft aber ausschließlich $_POST['csrf_token'] - ein im JSON-Body
  * mitgesendetes Token wäre also so oder so nie gesehen worden, selbst wenn
@@ -662,12 +675,21 @@ function handleTabellenrechnerAjax(int $ligaId, array $allSpieltage, string $trT
             $ov = $overrides[$pId];
             $hSet = isset($ov['h']) && is_numeric($ov['h']);
             $gSet = isset($ov['g']) && is_numeric($ov['g']);
-            if ($hSet) { $p['h_tore'] = (int)$ov['h']; }
-            if ($gSet) { $p['g_tore'] = (int)$ov['g']; }
-            if ($hSet !== $gSet) {
-                $p['h_tore'] = null;
-                $p['g_tore'] = null;
+            if ($hSet && $gSet) {
+                // Vollstaendige Override: 0:1, 0:0 (auch bei kuenftigen
+                // Partien) - alles zaehlt.
+                $p['h_tore'] = (int)$ov['h'];
+                $p['g_tore'] = (int)$ov['g'];
             }
+            // 1.9.117: EINSEITIGER Override
+            // (der Client tippt gerade / hat eine Seite leer) darf ein
+            // ECHTES DB-Ergebnis NICHT mehr nullen - die alte Regel
+            // '?h !== ?g => beide null' nahm einer schon gespielten
+            // Partie ihr 0:0 aus der What-If-Tabelle (Spieltag/S/U/Pkt
+            // sanken, der neue Sieg zaehlte nie: 13 statt 16). Die eine
+            // gesetzte Seite wird ignoriert, die Partie bleibt wie in
+            // der DB - bei kuenftigen Partien aendert das nichts (ohne
+            // Ergebnis bleibt sie ohnehin ungespielt).
         }
     }
     unset($p);
